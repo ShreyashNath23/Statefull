@@ -43,7 +43,7 @@ module.exports = {
       if (policyData.rows.length === 0) {
         res.status(500).json("This policy does not exist");
       } else {
-        await pool.query("DELETE FROM policies WHERE claimid = $1", [
+        await pool.query("DELETE FROM policies WHERE policyid = $1", [
           req.body.policyid,
         ]);
         await pool.query("INSERT INTO policies VALUES ($1, $2, $3)", [
@@ -51,6 +51,8 @@ module.exports = {
           req.body.des,
           req.body.amount,
         ]);
+        const result = await pool.query("SELECT * FROM policies");
+        res.status(201).json(result.rows);
       }
     } catch (err) {
       res.status(500).json(err);

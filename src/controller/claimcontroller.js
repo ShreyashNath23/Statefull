@@ -36,37 +36,47 @@ module.exports = {
   getClaims: async (req, res) => {
     try {
       const result = await pool.query("SELECT * FROM claims");
-      res.json(result.rows);
+      return res.json(result.rows);
     } catch (err) {
-      res.status(500).json(err.message);
+      return res.status(500).json(err.message);
     }
   },
 
   updateClaim: async (req, res) => {
     try {
       const claimData = await pool.query(
-        "SELECT*FROM claim WHERE claim id = $1",
+        "SELECT*FROM claims WHERE claimid = $1",
         [req.body.claimid]
       );
       if (
-        claimData.rows[0].length === 0 ||
+        claimData.rows.length === 0 ||
         claimData.rows[0].status === "closed"
       ) {
-        res.status(500).json("Sorry this claim does not exist or is closed");
+        return res.status(500).json("Sorry this claim does not exist or is closed");
       } else {
-        await pool.query("DELETE FROM claims WHERE claimid = $1", [
-          req.body.claimid,
-        ]);
-        await pool.query("INSERT INTO claim VALUES ($1, $2, $3, $4, $5)", [
-          req.body.claimid,
-          req.body.policyholderid,
-          req.body.policyid,
-          req.body.amount,
-          req.body.status,
-        ]);
+        const policyInfo = await pool.query(
+          "SELECT * FROM policies WHERE policyid = $1",
+          [req.body.policyid]
+        );
+        if (policyInfo.rows[0].amount < req.body.amount) {
+          return res.status(400).json("Policy amount is exceeding");
+        } else {
+          await pool.query("DELETE FROM claims WHERE claimid = $1", [
+            req.body.claimid,
+          ]);
+          await pool.query("INSERT INTO claims VALUES ($1, $2, $3, $4, $5)", [
+            req.body.claimid,
+            req.body.policyholderid,
+            req.body.policyid,
+            req.body.amount,
+            req.body.status,
+          ]);
+        }
       }
-    } catch (error) {
-      res.status(500).json(err.message);
+      const result = await pool.query("SELECT * FROM claims");
+      return res.status(201).json(result.rows);
+    } catch (err) {
+      return res.status(500).json(err.message);
     }
   },
 
@@ -77,7 +87,7 @@ module.exports = {
       [req.body.claimid]
     );
     if (
-      claimStatus.rows[0].length !== 0 &&
+      claimStatus.rows.length !== 0 &&
       claimStatus.rows[0].status !== "pending"
     ) {
       try {
@@ -86,12 +96,12 @@ module.exports = {
           [req.body.claimid, req.body.policyholderid, req.body.policyid]
         );
         const result = await pool.query("SELECT * FROM claims");
-        res.json(result.rows);
+        return res.json(result.rows);
       } catch (err) {
-        res.status(500).json(err.message);
+        return res.status(500).json(err.message);
       }
     } else {
-      res.status(500).json("Claim is either open or does not exist");
+      return res.status(500).json("Claim is either open or does not exist");
     }
   },
 };

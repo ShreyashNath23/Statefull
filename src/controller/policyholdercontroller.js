@@ -2,22 +2,30 @@ const pool = require("../../db");
 
 module.exports = {
   createPolicyHolder: async (req, res) => {
-    const { policyholderid, policyid, name, amount } = req.body;
+    // const { policyholderid, policyid, name, amount } = req.body.;
     try {
       // Check policy exists
       const policyExists = await pool.query(
         "SELECT * FROM policies WHERE policyid = $1",
-        [policyid]
+        [req.body.policyid]
       );
-      if (policyExists.rows.length === 0) {
-        return res.status(400).json("Policy does not exist");
+      //
+      if (
+        policyExists.rows.length === 0 ||
+        policyExists.rows[0].amount < req.body.amount
+      ) {
+        return res
+          .status(400)
+          .json(
+            "Policy does not exist or amount exceeds the maximum amount allowed under the policy"
+          );
       }
 
       await pool.query("INSERT INTO policyholder VALUES ($1, $2, $3, $4)", [
-        policyholderid,
-        policyid,
-        name,
-        amount,
+        req.body.policyholderid,
+        req.body.policyid,
+        req.body.name,
+        req.body.amount,
       ]);
       const result = await pool.query("SELECT * FROM policyholder");
       res.status(201).json(result.rows);
@@ -39,8 +47,8 @@ module.exports = {
     // const { policyholderid, policyid, name, amount } = req.body;
     try {
       const holderInfo = await pool.query(
-        "SELECT*FROM policyholder WHERE policyholderid = $1",
-        [req.body.policyholderid]
+        "SELECT*FROM policyholder WHERE policyholderid = $1 AND policyid = $2",
+        [req.body.policyholderid, req.body.policyid]
       );
       if (holderInfo.rows.length === 0) {
         res.status(400).json("This policy holder does not exist");
@@ -50,17 +58,27 @@ module.exports = {
             .status(500)
             .json("Sorry this policy holder do not have this policy");
         } else {
-          await pool.query(
-            "DELETE FROM policyholder WHERE policyholderid = $1 AND policyid = $2",
-            [req.body.policyholderid, req.body.policyid]
+          const policyInfo = await pool.query(
+            "SELECT * FROM policies WHERE policyid = $1",
+            [req.body.policyid]
           );
-          await pool.query("INSERT INTO policyholder VALUES $1 $2 $3 $4", [
-            req.body.policyholderid,
-            req.body.policyid,
-            req.body.name,
-            req.body.amount,
-          ]);
+          if (policyInfo.rows[0].amount < req.body.amount) {
+            return res.status(400).json("Policy amount is exceeding");
+          } else {
+            await pool.query(
+              "DELETE FROM policyholder WHERE policyholderid = $1 AND policyid = $2",
+              [req.body.policyholderid, req.body.policyid]
+            );
+            await pool.query("INSERT INTO policyholder VALUES ($1,$2,$3,$4)", [
+              req.body.policyholderid,
+              req.body.policyid,
+              req.body.name,
+              req.body.amount,
+            ]);
+          }
         }
+        const result = await pool.query("SELECT * FROM policyholder");
+        res.status(201).json(result.rows);
       }
     } catch (err) {
       res.status(500).json(err.message);
@@ -68,13 +86,13 @@ module.exports = {
   },
 
   deletePolicyHolder: async (req, res) => {
-    const { policyholderid, policyid } = req.body;
+    // const { policyholderid, policyid } = req.body;
     try {
       await pool.query(
-        "DELETE FROM policyholders WHERE policyholderid = $1 AND policyid = $2",
-        [policyholderid, policyid]
+        "DELETE FROM policyholder WHERE policyholderid = $1 AND policyid = $2",
+        [req.body.policyholderid, req.body.policyid]
       );
-      const result = await pool.query("SELECT * FROM policyholders");
+      const result = await pool.query("SELECT * FROM policyholder");
       res.status(200).json(result.rows);
     } catch (err) {
       res.status(500).json(err.message);
