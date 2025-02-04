@@ -8,6 +8,7 @@ const policyholderroute = require("./src/routes/policyholderroute");
 const claimroute = require("./src/routes/claimroute");
 
 app.get("/", (req, res) => {
+  console.log("Welcome to the server");
   res.send(console.log("Welcome to the server"));
 });
 
