@@ -1,7 +1,7 @@
 const express = require("express");
 const app = express();
 app.use(express.json()); //why??
-
+require("dotenv").config();
 
 const policyroute = require("./src/routes/policyroute");
 const policyholderroute = require("./src/routes/policyholderroute");

@@ -1,62 +1,97 @@
-const Claims = require("../models/claims");
-const { policy } = require("../data/data");
-const { policyholder } = require("../data/data");
-const { claims } = require("../data/data");
+const pool = require("../../db");
 
 module.exports = {
   createClaims: async (req, res) => {
-    if (policyholder.has(req.body.policyholderid)) {
-      const policyHolderInfo = policyholder.get(req.body.policyholderid);
-      const policyInfo = req.body.policyid;
-      const amountInfo = req.body.amount;
-      if (policyInfo != policyHolderInfo.policyid) {
-        return res.status(400).json("Sorry you do not have this policy");
-      } else if (amountInfo > policyHolderInfo.amount) {
+    // const { claimid, policyid, policyholderid, amount } = req.body;
+    try {
+      const policyHolder = await pool.query(
+        "SELECT * FROM policyholder WHERE policyholderid = $1 AND policyid = $2",
+        [req.body.policyholderid, req.body.policyid]
+      );
+
+      if (policyHolder.rows.length === 0) {
         return res
           .status(400)
-          .json("Sorry requested amount is greater than insaurance amount");
+          .json("Invalid policyholder or policy combination");
       }
-    } else {
-      return res
-        .status(400)
-        .json("Sorry you do not have permission to delete this claim");
+
+      if (policyHolder.rows[0].amount < req.body.amount) {
+        return res.status(400).json("Claim amount exceeds policy limit");
+      }
+
+      await pool.query("INSERT INTO claims VALUES ($1, $2, $3, $4, $5)", [
+        req.body.claimid,
+        req.body.policyholderid,
+        req.body.policyid,
+        req.body.amount,
+        req.body.status,
+      ]);
+      const result = await pool.query("SELECT * FROM claims");
+      res.status(201).json(result.rows);
+    } catch (err) {
+      res.status(500).json(err.message);
     }
-    
-    const newClaim = new Claims(
-      req.body.claimid,
-      req.body.policyid,
-      req.body.policyholderid,
-      req.body.amount
-    );
-    // console.log(newClaim);
-    claims.set(req.body.claimid, newClaim);
-    res.status(201).json(Array.from(claims.values()));
   },
-  getClaims: (req, res) => {
-    res.json(Array.from(claims.values()));
+
+  getClaims: async (req, res) => {
+    try {
+      const result = await pool.query("SELECT * FROM claims");
+      res.json(result.rows);
+    } catch (err) {
+      res.status(500).json(err.message);
+    }
   },
-  deleteClaim: (req, res) => {
-    //Check karo if specific claim exist or not
-    if (claims.has(req.body.claimid)) {
-      //Check karo if that claim belong to right holder
-      const claiminfo = claims.get(req.body.claimid);
-      const claimholder = claiminfo.policyholderid;
-      const claimpolicy = claiminfo.policyid;
+
+  updateClaim: async (req, res) => {
+    try {
+      const claimData = await pool.query(
+        "SELECT*FROM claim WHERE claim id = $1",
+        [req.body.claimid]
+      );
       if (
-        claimholder === req.body.policyholderid &&
-        claimpolicy === req.body.policyid
+        claimData.rows[0].length === 0 ||
+        claimData.rows[0].status === "closed"
       ) {
-        claims.delete(req.body.claimid);
-        res.json(Array.from(claims.values()));
+        res.status(500).json("Sorry this claim does not exist or is closed");
       } else {
-        return res
-          .status(400)
-          .json("Sorry you do not have permission to delete this claim");
+        await pool.query("DELETE FROM claims WHERE claimid = $1", [
+          req.body.claimid,
+        ]);
+        await pool.query("INSERT INTO claim VALUES ($1, $2, $3, $4, $5)", [
+          req.body.claimid,
+          req.body.policyholderid,
+          req.body.policyid,
+          req.body.amount,
+          req.body.status,
+        ]);
+      }
+    } catch (error) {
+      res.status(500).json(err.message);
+    }
+  },
+
+  deleteClaim: async (req, res) => {
+    // const { claimid, policyholderid, policyid } = req.body.;
+    const claimStatus = await pool.query(
+      "SELECT * FROM claims WHERE claimid = $1",
+      [req.body.claimid]
+    );
+    if (
+      claimStatus.rows[0].length !== 0 &&
+      claimStatus.rows[0].status !== "pending"
+    ) {
+      try {
+        await pool.query(
+          "DELETE FROM claims WHERE claimid = $1 AND policyholderid = $2 AND policyid = $3",
+          [req.body.claimid, req.body.policyholderid, req.body.policyid]
+        );
+        const result = await pool.query("SELECT * FROM claims");
+        res.json(result.rows);
+      } catch (err) {
+        res.status(500).json(err.message);
       }
     } else {
-      return res
-        .status(400)
-        .json("Sorry you do not have permission to delete this claim");
+      res.status(500).json("Claim is either open or does not exist");
     }
   },
 };
