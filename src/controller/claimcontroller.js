@@ -2,11 +2,11 @@ const pool = require("../../db");
 
 module.exports = {
   createClaims: async (req, res) => {
-    // const { claimid, policyid, policyholderid, amount } = req.body;
+    // const { claimid, ply_name, email, amount } = req.body;
     try {
       const policyHolder = await pool.query(
-        "SELECT * FROM policyholder WHERE policyholderid = $1 AND policyid = $2",
-        [req.body.policyholderid, req.body.policyid]
+        "SELECT * FROM policyholder WHERE email = $1 AND ply_name = $2",
+        [req.body.email, req.body.ply_name]
       );
 
       if (policyHolder.rows.length === 0) {
@@ -15,27 +15,32 @@ module.exports = {
           .json("Invalid policyholder or policy combination");
       }
 
-      if (policyHolder.rows[0].amount < req.body.amount) {
+      if (policyHolder.rows[0].ply_amt < req.body.claim_amt) {
         return res.status(400).json("Claim amount exceeds policy limit");
       }
 
-      await pool.query("INSERT INTO claims VALUES ($1, $2, $3, $4, $5)", [
-        req.body.claimid,
-        req.body.policyholderid,
-        req.body.policyid,
-        req.body.amount,
-        req.body.status,
-      ]);
-      const result = await pool.query("SELECT * FROM claims");
-      res.status(201).json(result.rows);
+      await pool.query(
+        "INSERT INTO claim (email, ply_name, claim_amt, claim_status) VALUES ($1, $2, $3, $4)",
+        [
+          // req.body.claimid,
+          req.body.email,
+          req.body.ply_name,
+          req.body.claim_amt,
+          req.body.claim_status,
+        ]
+      );
+      const result = await pool.query("SELECT * FROM claim");
+      return res.status(201).json(result.rows);
     } catch (err) {
-      res.status(500).json(err.message);
+      return res.status(500).json(err.message);
     }
   },
 
   getClaims: async (req, res) => {
     try {
-      const result = await pool.query("SELECT * FROM claims");
+      const result = await pool.query("SELECT * FROM claim WHERE email = $1", [
+        req.body.email,
+      ]);
       return res.json(result.rows);
     } catch (err) {
       return res.status(500).json(err.message);
@@ -45,46 +50,59 @@ module.exports = {
   updateClaim: async (req, res) => {
     try {
       const claimData = await pool.query(
-        "SELECT*FROM claims WHERE claimid = $1",
-        [req.body.claimid]
+        "SELECT*FROM claim WHERE email = $1 AND ply_name = $2",
+        [req.body.email, req.body.ply_name]
       );
       if (
         claimData.rows.length === 0 ||
-        claimData.rows[0].status === "closed"
+        claimData.rows[0].claim_status === "closed"
       ) {
-        return res.status(500).json("Sorry this claim does not exist or is closed");
+        return res
+          .status(500)
+          .json("Sorry this claim does not exist or is closed");
       } else {
         const policyInfo = await pool.query(
-          "SELECT * FROM policies WHERE policyid = $1",
-          [req.body.policyid]
+          "SELECT * FROM policy WHERE ply_name = $1",
+          [req.body.ply_name]
         );
-        if (policyInfo.rows[0].amount < req.body.amount) {
-          return res.status(400).json("Policy amount is exceeding");
+        if (policyInfo.rows.length === 0) {
+          return res.status(400).json("Policy does not exceed");
         } else {
-          await pool.query("DELETE FROM claims WHERE claimid = $1", [
-            req.body.claimid,
-          ]);
-          await pool.query("INSERT INTO claims VALUES ($1, $2, $3, $4, $5)", [
-            req.body.claimid,
-            req.body.policyholderid,
-            req.body.policyid,
-            req.body.amount,
-            req.body.status,
-          ]);
+          const policyHolder = await pool.query(
+            "SELECT * FROM policyholder WHERE email = $1 AND ply_name = $2",
+            [req.body.email, req.body.ply_name]
+          );
+          if (policyHolder.rows[0].ply_amt < req.body.claim_amt) {
+            return res.status(400).json("Claim amount exceeds policy limit");
+          }
+          await pool.query(
+            "DELETE FROM claim WHERE email = $1 AND ply_name = $2",
+            [req.body.email, req.body.ply_name]
+          );
+          await pool.query(
+            "INSERT INTO claim (email, ply_name,claim_amt, claim_status) VALUES ($1, $2, $3, $4)",
+            [
+              // req.body.claimid,
+              req.body.email,
+              req.body.ply_name,
+              req.body.claim_amt,
+              req.body.claim_status,
+            ]
+          );
+          const result = await pool.query("SELECT * FROM claim");
+          return res.status(201).json(result.rows);
         }
       }
-      const result = await pool.query("SELECT * FROM claims");
-      return res.status(201).json(result.rows);
     } catch (err) {
       return res.status(500).json(err.message);
     }
   },
 
   deleteClaim: async (req, res) => {
-    // const { claimid, policyholderid, policyid } = req.body.;
+    // const { claimid, email, ply_name } = req.body.;
     const claimStatus = await pool.query(
-      "SELECT * FROM claims WHERE claimid = $1",
-      [req.body.claimid]
+      "SELECT * FROM claim WHERE email = $1 AND ply_name = $2",
+      [req.body.email, req.body.ply_name]
     );
     if (
       claimStatus.rows.length !== 0 &&
@@ -92,10 +110,10 @@ module.exports = {
     ) {
       try {
         await pool.query(
-          "DELETE FROM claims WHERE claimid = $1 AND policyholderid = $2 AND policyid = $3",
-          [req.body.claimid, req.body.policyholderid, req.body.policyid]
+          "DELETE FROM claim WHERE email = $1 AND ply_name = $2",
+          [req.body.email, req.body.ply_name]
         );
-        const result = await pool.query("SELECT * FROM claims");
+        const result = await pool.query("SELECT * FROM claim");
         return res.json(result.rows);
       } catch (err) {
         return res.status(500).json(err.message);
