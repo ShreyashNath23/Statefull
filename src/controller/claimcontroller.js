@@ -39,7 +39,7 @@ module.exports = {
   getClaims: async (req, res) => {
     try {
       const result = await pool.query("SELECT * FROM claim WHERE email = $1", [
-        req.body.email,
+        req.query.email,
       ]);
       return res.json(result.rows);
     } catch (err) {
@@ -106,7 +106,7 @@ module.exports = {
     );
     if (
       claimStatus.rows.length !== 0 &&
-      claimStatus.rows[0].status !== "pending"
+      claimStatus.rows[0].claim_status !== "pending"
     ) {
       try {
         await pool.query(
